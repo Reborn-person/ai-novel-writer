@@ -2,18 +2,25 @@
 
 import { useState, useEffect } from 'react';
 import { StorageManager, STORAGE_KEYS } from '@/lib/storage';
-import { Download, Upload, Trash2, RefreshCw, Database, Save, FileText } from 'lucide-react';
+import { EnhancedStorageManager, StorageOptimizer } from '@/lib/storage-optimizer';
+import { Download, Upload, Trash2, RefreshCw, Database, Save, FileText, AlertTriangle, Zap, BarChart3 } from 'lucide-react';
 
 export default function StorageManagerPage() {
   const [storageStats, setStorageStats] = useState({ used: 0, total: 0, percentage: 0 });
+  const [enhancedStats, setEnhancedStats] = useState<any>(null);
   const [modulesData, setModulesData] = useState<Record<string, any>>({});
   const [lastSaveTime, setLastSaveTime] = useState<string | null>(null);
   const [hasBackup, setHasBackup] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [showAnalysis, setShowAnalysis] = useState(false);
 
   // 加载储存状态
   const loadStorageStatus = () => {
-    setStorageStats(StorageManager.getStorageStats());
+    const stats = StorageManager.getStorageStats();
+    const enhanced = EnhancedStorageManager.getOptimizedStorageStats();
+    
+    setStorageStats(stats);
+    setEnhancedStats(enhanced);
     setModulesData(StorageManager.getAllModulesData());
     setLastSaveTime(StorageManager.getLastSaveTime());
     setHasBackup(!!StorageManager.get(STORAGE_KEYS.PROJECT_BACKUP));
@@ -131,6 +138,29 @@ export default function StorageManagerPage() {
     }
   };
 
+  // 清理过期数据
+  const handleCleanupExpired = () => {
+    if (confirm('确定要清理过期数据吗？这可能会删除一些临时文件。')) {
+      StorageOptimizer.cleanupExpiredData();
+      loadStorageStatus();
+      showMessage('success', '过期数据清理完成！');
+    }
+  };
+
+  // 压缩大文本数据
+  const handleCompressLargeData = () => {
+    if (confirm('确定要压缩大文本数据吗？这可能会提高储存效率。')) {
+      const result = StorageOptimizer.compressLargeData();
+      loadStorageStatus();
+      showMessage('success', `压缩完成！处理了 ${result.compressed} 个数据，节省 ${formatBytes(result.savedSpace)} 空间。`);
+    }
+  };
+
+  // 显示储存分析
+  const handleShowAnalysis = () => {
+    setShowAnalysis(!showAnalysis);
+  };
+
   // 格式化文件大小
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
@@ -169,7 +199,64 @@ export default function StorageManagerPage() {
 
           {/* 储存统计 */}
           <div className="p-6 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">储存使用情况</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">储存使用情况</h2>
+              <button
+                onClick={handleShowAnalysis}
+                className="flex items-center space-x-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span>储存分析</span>
+              </button>
+            </div>
+            
+            {/* 警告提示 */}
+            {enhancedStats?.analysis && (
+              <div className={`mb-4 p-4 rounded-lg ${
+                enhancedStats.percentage > 90 
+                  ? 'bg-red-50 border border-red-200' 
+                  : enhancedStats.percentage > 80
+                  ? 'bg-orange-50 border border-orange-200'
+                  : enhancedStats.percentage > 60
+                  ? 'bg-yellow-50 border border-yellow-200'
+                  : enhancedStats.percentage > 40
+                  ? 'bg-blue-50 border border-blue-200'
+                  : 'bg-green-50 border border-green-200'
+              }`}>
+                <div className="flex items-center space-x-2 mb-2">
+                  <AlertTriangle className={`w-5 h-5 ${
+                    enhancedStats.percentage > 90 ? 'text-red-600' :
+                    enhancedStats.percentage > 80 ? 'text-orange-600' :
+                    enhancedStats.percentage > 60 ? 'text-yellow-600' :
+                    enhancedStats.percentage > 40 ? 'text-blue-600' : 'text-green-600'
+                  }`} />
+                  <span className={`font-medium ${
+                    enhancedStats.percentage > 90 ? 'text-red-800' :
+                    enhancedStats.percentage > 80 ? 'text-orange-800' :
+                    enhancedStats.percentage > 60 ? 'text-yellow-800' :
+                    enhancedStats.percentage > 40 ? 'text-blue-800' : 'text-green-800'
+                  }`}>
+                    储存状态
+                  </span>
+                </div>
+                <ul className={`text-sm space-y-1 ${
+                  enhancedStats.percentage > 90 ? 'text-red-700' :
+                  enhancedStats.percentage > 80 ? 'text-orange-700' :
+                  enhancedStats.percentage > 60 ? 'text-yellow-700' :
+                  enhancedStats.percentage > 40 ? 'text-blue-700' : 'text-green-700'
+                }`}>
+                  {enhancedStats.percentage > 90 && <li>• 储存空间严重不足，建议立即清理</li>}
+                  {enhancedStats.percentage > 80 && enhancedStats.percentage <= 90 && <li>• 储存空间使用率较高，建议优化</li>}
+                  {enhancedStats.percentage > 60 && enhancedStats.percentage <= 80 && <li>• 储存空间使用正常，可适当优化</li>}
+                  {enhancedStats.percentage > 40 && enhancedStats.percentage <= 60 && <li>• 储存空间充足，运行良好</li>}
+                  {enhancedStats.percentage <= 40 && <li>• 储存空间非常充足</li>}
+                  {enhancedStats.analysis.expiredKeys > 0 && <li>• 发现 {enhancedStats.analysis.expiredKeys} 个过期数据项</li>}
+                  {enhancedStats.analysis.compressionOpportunities > 0 && <li>• 可压缩数据节省 {formatBytes(enhancedStats.analysis.potentialSavings)} 空间</li>}
+                  {enhancedStats.analysis.largeKeys > 0 && <li>• 发现 {enhancedStats.analysis.largeKeys} 个大文本数据项</li>}
+                </ul>
+              </div>
+            )}
+            
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-blue-50 p-4 rounded-lg">
                 <div className="text-2xl font-bold text-blue-600">{formatBytes(storageStats.used)}</div>
@@ -187,7 +274,12 @@ export default function StorageManagerPage() {
             <div className="mt-4">
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  className={`h-2 rounded-full transition-all duration-300 ${
+                    enhancedStats?.percentage > 90 ? 'bg-red-600' :
+                    enhancedStats?.percentage > 80 ? 'bg-orange-600' :
+                    enhancedStats?.percentage > 60 ? 'bg-yellow-600' :
+                    enhancedStats?.percentage > 40 ? 'bg-blue-600' : 'bg-green-600'
+                  }`}
                   style={{ width: `${Math.min(storageStats.percentage, 100)}%` }}
                 ></div>
               </div>
@@ -200,7 +292,7 @@ export default function StorageManagerPage() {
           {/* 数据管理 */}
           <div className="p-6 border-b border-gray-200">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">数据管理</h2>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
               <button
                 onClick={handleExport}
                 className="flex items-center justify-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
@@ -245,7 +337,36 @@ export default function StorageManagerPage() {
                   <span>恢复备份</span>
                 </button>
               )}
+              
+              <button
+                onClick={handleCleanupExpired}
+                className="flex items-center justify-center space-x-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+              >
+                <Zap className="w-4 h-4" />
+                <span>清理过期</span>
+              </button>
             </div>
+            
+            {/* 高级优化选项 */}
+            {enhancedStats?.analysis?.compressionOpportunities > 0 && (
+              <div className="mt-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium text-yellow-800">发现优化机会</h3>
+                    <p className="text-sm text-yellow-700">
+                      检测到 {enhancedStats.analysis.largeKeys} 个大文本数据，可节省约 {formatBytes(enhancedStats.analysis.potentialSavings)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleCompressLargeData}
+                    className="flex items-center space-x-2 bg-yellow-600 text-white px-4 py-2 rounded-lg hover:bg-yellow-700 transition-colors"
+                  >
+                    <Zap className="w-4 h-4" />
+                    <span>压缩数据</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 模块数据 */}
@@ -289,6 +410,80 @@ export default function StorageManagerPage() {
               </div>
             )}
           </div>
+
+          {/* 储存分析详情 */}
+          {showAnalysis && enhancedStats && enhancedStats.analysis && (
+            <div className="p-6 border-t border-gray-200 bg-gray-50">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">详细储存分析</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white p-4 rounded-lg">
+                  <h3 className="font-medium text-gray-900 mb-3">储存统计</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">总数据项:</span>
+                      <span className="font-medium">{enhancedStats.analysis.totalKeys}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">已压缩项:</span>
+                      <span className="font-medium">{enhancedStats.analysis.compressedKeys}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">大文本项:</span>
+                      <span className="font-medium">{enhancedStats.analysis.largeKeys}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">过期项:</span>
+                      <span className="font-medium">{enhancedStats.analysis.expiredKeys}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-white p-4 rounded-lg">
+                  <h3 className="font-medium text-gray-900 mb-3">空间分析</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">总大小:</span>
+                      <span className="font-medium">{formatBytes(enhancedStats.analysis.totalSize)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">压缩大小:</span>
+                      <span className="font-medium">{formatBytes(enhancedStats.analysis.compressedSize)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">大文本大小:</span>
+                      <span className="font-medium">{formatBytes(enhancedStats.analysis.largeSize)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">可节省空间:</span>
+                      <span className="font-medium text-green-600">{formatBytes(enhancedStats.analysis.potentialSavings)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* 优化建议 */}
+              <div className="mt-6 bg-white p-4 rounded-lg">
+                <h3 className="font-medium text-gray-900 mb-3">优化建议</h3>
+                <div className="space-y-2 text-sm">
+                  {enhancedStats.analysis.expiredKeys > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">清理过期数据可节省:</span>
+                      <span className="font-medium text-green-600">{formatBytes(enhancedStats.analysis.expiredSize)}</span>
+                    </div>
+                  )}
+                  {enhancedStats.analysis.compressionOpportunities > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">压缩数据可节省:</span>
+                      <span className="font-medium text-green-600">{formatBytes(enhancedStats.analysis.potentialSavings)}</span>
+                    </div>
+                  )}
+                  {enhancedStats.analysis.expiredKeys === 0 && enhancedStats.analysis.compressionOpportunities === 0 && (
+                    <div className="text-gray-600">储存空间已优化，暂无更多优化建议。</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

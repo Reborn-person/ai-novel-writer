@@ -37,7 +37,10 @@ export class StorageManager {
   static set(key: string, value: string): void {
     if (typeof window === 'undefined') return;
     localStorage.setItem(key, value);
-    this.updateLastSaveTime();
+    // 避免循环调用：只在非LAST_SAVE_TIME键时更新保存时间
+    if (key !== STORAGE_KEYS.LAST_SAVE_TIME) {
+      this.updateLastSaveTime();
+    }
   }
   
   // 获取JSON数据
@@ -137,7 +140,10 @@ export class StorageManager {
         this.set(STORAGE_KEYS.MODULE7_SUGGESTION, projectData.module7Suggestion);
       }
       
-      this.updateLastSaveTime();
+      // 直接设置最后保存时间，避免循环调用
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEYS.LAST_SAVE_TIME, new Date().toISOString());
+      }
       return true;
     } catch {
       return false;
@@ -265,7 +271,7 @@ export class StorageManager {
     }
     
     const used = JSON.stringify(localStorage).length;
-    const total = 5 * 1024 * 1024; // 5MB 估算
+    const total = 100 * 1024 * 1024; // 100MB 估算
     const percentage = (used / total) * 100;
     
     return { used, total, percentage };
